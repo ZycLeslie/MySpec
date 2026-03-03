@@ -26,6 +26,38 @@ function parseJSONOrEmpty(text, fieldName) {
   }
 }
 
+function parseHeaders(text) {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return {};
+  }
+
+  if (trimmed.startsWith("{")) {
+    return parseJSONOrEmpty(trimmed, "请求头");
+  }
+
+  const headers = {};
+  const lines = trimmed.split(/\r?\n/);
+  for (const line of lines) {
+    const cleanLine = line.trim();
+    if (!cleanLine) {
+      continue;
+    }
+    const sepIndex = cleanLine.indexOf(":");
+    if (sepIndex <= 0) {
+      throw new Error(`请求头格式错误: ${cleanLine}`);
+    }
+    const key = cleanLine.slice(0, sepIndex).trim();
+    const value = cleanLine.slice(sepIndex + 1).trim();
+    if (!key) {
+      throw new Error(`请求头键为空: ${cleanLine}`);
+    }
+    headers[key] = value;
+  }
+
+  return headers;
+}
+
 async function getActiveTabId() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab || typeof tab.id !== "number") {
@@ -50,7 +82,7 @@ function collectConfig() {
     method: ids.method.value,
     currentPage: Number(ids.currentPage.value || 1),
     maxPages: Number(ids.maxPages.value || 200),
-    headers: parseJSONOrEmpty(ids.headers.value, "请求头"),
+    headers: parseHeaders(ids.headers.value),
     bodyTemplate: ids.body.value.trim(),
     dataPath,
     totalPagesPath: ids.totalPagesPath.value.trim()

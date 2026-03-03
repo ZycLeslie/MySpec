@@ -27,5 +27,8 @@
 
 ## 说明
 - URL 和请求体中都支持 `{page}` 占位符。
+- 请求头支持两种格式：
+  - JSON：`{"Content-Type":"application/json"}`
+  - 文本逐行：`Content-Type: application/json`
 - 如果不填写总页路径，会在某一页数据为空数组时自动停止。
 - 「最大页数」用于避免无限翻页。
