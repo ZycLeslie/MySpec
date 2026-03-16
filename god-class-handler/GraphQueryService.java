@@ -9,11 +9,13 @@ public final class GraphQueryService {
     private final String nodeLabel;
     private final String relationType;
 
+    // 约定图里的节点标签和边类型，后续所有查询都基于这两个元信息生成。
     public GraphQueryService(String nodeLabel, String relationType) {
         this.nodeLabel = validateIdentifier(nodeLabel, "nodeLabel");
         this.relationType = validateIdentifier(relationType, "relationType");
     }
 
+    // 查询单个节点的入边数量、出边数量和总边数量。
     public CypherQuery buildNodeSummaryQuery(String nodeId) {
         Map<String, Object> params = new LinkedHashMap<String, Object>();
         params.put("nodeId", requireText(nodeId, "nodeId"));
@@ -29,6 +31,7 @@ public final class GraphQueryService {
         return new CypherQuery(statement, params);
     }
 
+    // 查询两个节点之间直接边的属性汇总。
     public CypherQuery buildEdgeSummaryQuery(String fromNodeId, String toNodeId) {
         Map<String, Object> params = new LinkedHashMap<String, Object>();
         params.put("fromNodeId", requireText(fromNodeId, "fromNodeId"));
@@ -44,11 +47,13 @@ public final class GraphQueryService {
         return new CypherQuery(statement, params);
     }
 
+    // 只支持 A-B-C 这种单条路径表达式。
     public CypherQuery buildDirectPathQuery(String expression) {
         PathSpec path = parseDirectPath(expression);
         return buildPathQuery(path, "p", false, "path");
     }
 
+    // 支持 A-B-C,B-D 这种多分支表达式，每个分支会生成一段 MATCH，再用 UNION ALL 拼接。
     public CypherQuery buildBranchPathQuery(String expression) {
         List<PathSpec> branches = parseBranches(expression);
         if (branches.size() == 1) {
@@ -71,6 +76,7 @@ public final class GraphQueryService {
         return new CypherQuery(statement.toString(), params);
     }
 
+    // 把一条标准化后的路径定义转换成一段完整的 Cypher 查询。
     private CypherQuery buildPathQuery(PathSpec path, String pathAlias, boolean includeBranchName, String paramPrefix) {
         StringBuilder statement = new StringBuilder();
         Map<String, Object> params = new LinkedHashMap<String, Object>();
@@ -87,6 +93,7 @@ public final class GraphQueryService {
         return new CypherQuery(statement.toString(), params);
     }
 
+    // A-B-C 会被拼成 (n0)-[:REL]->(n1)-[:REL]->(n2)，节点 id 通过参数绑定传入。
     private void appendPathPattern(StringBuilder statement, Map<String, Object> params,
                                    List<String> nodes, String paramPrefix) {
         for (int i = 0; i < nodes.size(); i++) {
@@ -100,6 +107,7 @@ public final class GraphQueryService {
         }
     }
 
+    // 解析分支路径，兼容中文逗号和空格。
     private List<PathSpec> parseBranches(String expression) {
         String normalized = normalize(expression);
         if (normalized.isEmpty()) {
@@ -118,6 +126,7 @@ public final class GraphQueryService {
         return branches;
     }
 
+    // 单路径查询不允许带逗号，否则说明调用方传进来的是分支查询格式。
     private PathSpec parseDirectPath(String expression) {
         String normalized = normalize(expression);
         if (normalized.contains(",")) {
@@ -126,6 +135,7 @@ public final class GraphQueryService {
         return parsePath(normalized);
     }
 
+    // 把 A-B-C 解析成节点列表 ["A", "B", "C"]。
     private PathSpec parsePath(String expression) {
         List<String> rawNodes = Arrays.asList(normalize(expression).split("-"));
         if (rawNodes.size() < 2) {
@@ -139,6 +149,7 @@ public final class GraphQueryService {
         return new PathSpec(String.join("-", nodes), nodes);
     }
 
+    // 统一做输入清洗，减少上层对中文标点和空白字符的处理负担。
     private String normalize(String expression) {
         if (expression == null) {
             return "";
@@ -153,6 +164,7 @@ public final class GraphQueryService {
         return value.trim();
     }
 
+    // label/type 会直接进入 Cypher 结构，必须限制成合法标识符，不能信任外部输入。
     private String validateIdentifier(String value, String fieldName) {
         String text = requireText(value, fieldName);
         if (!text.matches("[A-Za-z_][A-Za-z0-9_]*")) {
@@ -165,6 +177,7 @@ public final class GraphQueryService {
         private final String expression;
         private final List<String> nodes;
 
+        // expression 是标准化后的原始路径，nodes 是拆分后的节点序列。
         private PathSpec(String expression, List<String> nodes) {
             this.expression = expression;
             this.nodes = Collections.unmodifiableList(new ArrayList<String>(nodes));
@@ -183,6 +196,7 @@ public final class GraphQueryService {
         private final String statement;
         private final Map<String, Object> params;
 
+        // statement 负责执行，params 负责绑定参数，避免直接拼接节点值。
         public CypherQuery(String statement, Map<String, Object> params) {
             this.statement = statement;
             this.params = Collections.unmodifiableMap(new LinkedHashMap<String, Object>(params));
