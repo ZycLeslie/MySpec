@@ -14,29 +14,35 @@ public final class GraphQueryService {
         this.relationType = validateIdentifier(relationType, "relationType");
     }
 
-    // 查询全图中每个节点的汇总信息。
-    public CypherQuery buildGraphNodeSummaryQuery() {
-        String statement = "MATCH (n:" + nodeLabel + ")\n"
-                + "OPTIONAL MATCH (n)-[out:" + relationType + "]->()\n"
-                + "WITH n, count(out) AS outEdgeCount\n"
-                + "OPTIONAL MATCH ()-[in:" + relationType + "]->(n)\n"
-                + "RETURN n.id AS nodeId,\n"
-                + "       properties(n) AS nodeProperties,\n"
-                + "       outEdgeCount,\n"
-                + "       count(in) AS inEdgeCount,\n"
-                + "       outEdgeCount + count(in) AS totalEdgeCount\n"
-                + "ORDER BY nodeId";
-        return new CypherQuery(statement, Collections.<String, Object>emptyMap());
-    }
-
-    // 查询全图中每条边的汇总信息。
-    public CypherQuery buildGraphEdgeSummaryQuery() {
-        String statement = "MATCH (from:" + nodeLabel + ")-[r:" + relationType + "]->(to:" + nodeLabel + ")\n"
-                + "RETURN from.id AS fromNodeId,\n"
-                + "       to.id AS toNodeId,\n"
-                + "       type(r) AS relationType,\n"
-                + "       properties(r) AS edgeProperties\n"
-                + "ORDER BY fromNodeId, toNodeId";
+    // 用一个查询同时返回全图节点汇总和全图边汇总，避免上层发两次请求。
+    public CypherQuery buildGraphSummaryQuery() {
+        String statement = "CALL {\n"
+                + "  MATCH (n:" + nodeLabel + ")\n"
+                + "  OPTIONAL MATCH (n)-[out:" + relationType + "]->()\n"
+                + "  WITH n, count(out) AS outEdgeCount\n"
+                + "  OPTIONAL MATCH ()-[in:" + relationType + "]->(n)\n"
+                + "  WITH n, outEdgeCount, count(in) AS inEdgeCount\n"
+                + "  ORDER BY n.id\n"
+                + "  RETURN collect({\n"
+                + "    nodeId: n.id,\n"
+                + "    nodeProperties: properties(n),\n"
+                + "    outEdgeCount: outEdgeCount,\n"
+                + "    inEdgeCount: inEdgeCount,\n"
+                + "    totalEdgeCount: outEdgeCount + inEdgeCount\n"
+                + "  }) AS nodes\n"
+                + "}\n"
+                + "CALL {\n"
+                + "  MATCH (from:" + nodeLabel + ")-[r:" + relationType + "]->(to:" + nodeLabel + ")\n"
+                + "  WITH from, r, to\n"
+                + "  ORDER BY from.id, to.id\n"
+                + "  RETURN collect({\n"
+                + "    fromNodeId: from.id,\n"
+                + "    toNodeId: to.id,\n"
+                + "    relationType: type(r),\n"
+                + "    edgeProperties: properties(r)\n"
+                + "  }) AS edges\n"
+                + "}\n"
+                + "RETURN nodes, edges";
         return new CypherQuery(statement, Collections.<String, Object>emptyMap());
     }
 

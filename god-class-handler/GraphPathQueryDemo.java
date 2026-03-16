@@ -6,8 +6,7 @@ public class GraphPathQueryDemo {
         // Demo 只负责展示 GraphQueryService 的调用方式。
         GraphQueryService service = new GraphQueryService("Node", "REL");
 
-        print("全图节点汇总查询", service.buildGraphNodeSummaryQuery());
-        print("全图边汇总查询", service.buildGraphEdgeSummaryQuery());
+        print("全图汇总查询", service.buildGraphSummaryQuery());
 
         GraphQueryService.PathQueryRequest request = GraphQueryService.PathQueryRequest.of(Arrays.asList(
                 GraphQueryService.Branch.of(
