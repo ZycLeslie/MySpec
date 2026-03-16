@@ -1,3 +1,5 @@
+import java.util.Arrays;
+
 public class GraphPathQueryDemo {
 
     public static void main(String[] args) {
@@ -6,12 +8,33 @@ public class GraphPathQueryDemo {
 
         print("节点汇总查询", service.buildNodeSummaryQuery("A"));
         print("边汇总查询", service.buildEdgeSummaryQuery("A", "B"));
-        print("直接路径查询 A-B-C", service.buildDirectPathQuery("A-B-C"));
-        print("分支路径查询 A-B-C,B-D", service.buildBranchPathQuery("A-B-C,B-D"));
 
-        for (String arg : args) {
-            print("自定义输入 " + arg, service.buildBranchPathQuery(arg));
-        }
+        GraphQueryService.PathQueryRequest request = GraphQueryService.PathQueryRequest.of(Arrays.asList(
+                GraphQueryService.Branch.of(
+                        "branch-1",
+                        Arrays.asList(
+                                GraphQueryService.NodeRef.of("a", GraphQueryService.Condition.eq("name", "alpha")),
+                                GraphQueryService.NodeRef.of("b", GraphQueryService.Condition.contains("name", "beta")),
+                                GraphQueryService.NodeRef.of("c", GraphQueryService.Condition.eq("status", "online"))
+                        ),
+                        Arrays.asList(
+                                GraphQueryService.EdgeRef.of("ab", GraphQueryService.Condition.eq("type", "depends")),
+                                GraphQueryService.EdgeRef.of("bc", GraphQueryService.Condition.contains("remark", "core"))
+                        )
+                ),
+                GraphQueryService.Branch.of(
+                        "branch-2",
+                        Arrays.asList(
+                                GraphQueryService.NodeRef.of("b", GraphQueryService.Condition.contains("name", "beta")),
+                                GraphQueryService.NodeRef.of("d", GraphQueryService.Condition.eq("name", "delta"))
+                        ),
+                        Arrays.asList(
+                                GraphQueryService.EdgeRef.of("bd", GraphQueryService.Condition.eq("status", "valid"))
+                        )
+                )
+        ));
+
+        print("结构化路径查询", service.buildPathQuery(request));
     }
 
     // 打印生成后的 Cypher 和对应参数，便于直接复制到 Neo4j 客户端验证。

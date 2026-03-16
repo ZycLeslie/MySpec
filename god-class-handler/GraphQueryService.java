@@ -1,5 +1,4 @@
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -47,114 +46,133 @@ public final class GraphQueryService {
         return new CypherQuery(statement, params);
     }
 
-    // 只支持 A-B-C 这种单条路径表达式。
-    public CypherQuery buildDirectPathQuery(String expression) {
-        PathSpec path = parseDirectPath(expression);
-        return buildPathQuery(path, "p", false, "path");
-    }
-
-    // 支持 A-B-C,B-D 这种多分支表达式，每个分支会生成一段 MATCH，再用 UNION ALL 拼接。
-    public CypherQuery buildBranchPathQuery(String expression) {
-        List<PathSpec> branches = parseBranches(expression);
-        if (branches.size() == 1) {
-            return buildPathQuery(branches.get(0), "p", false, "path");
+    // 路径查询改成结构化入参，节点和边都可以携带条件。
+    public CypherQuery buildPathQuery(PathQueryRequest request) {
+        requireNonNull(request, "request");
+        if (request.branches().isEmpty()) {
+            throw new IllegalArgumentException("request.branches must not be empty");
         }
 
         StringBuilder statement = new StringBuilder();
         Map<String, Object> params = new LinkedHashMap<String, Object>();
-        for (int i = 0; i < branches.size(); i++) {
+
+        for (int i = 0; i < request.branches().size(); i++) {
             if (i > 0) {
                 statement.append("\nUNION ALL\n");
             }
 
-            String pathAlias = "p" + i;
-            String paramPrefix = "branch" + i;
-            CypherQuery branchQuery = buildPathQuery(branches.get(i), pathAlias, true, paramPrefix);
-            statement.append(branchQuery.statement());
-            params.putAll(branchQuery.params());
+            Branch branch = request.branches().get(i);
+            appendBranchQuery(statement, params, branch, i);
         }
+
         return new CypherQuery(statement.toString(), params);
     }
 
-    // 把一条标准化后的路径定义转换成一段完整的 Cypher 查询。
-    private CypherQuery buildPathQuery(PathSpec path, String pathAlias, boolean includeBranchName, String paramPrefix) {
-        StringBuilder statement = new StringBuilder();
-        Map<String, Object> params = new LinkedHashMap<String, Object>();
+    // 每个分支对应一段 MATCH/WHERE/RETURN。
+    private void appendBranchQuery(StringBuilder statement, Map<String, Object> params, Branch branch, int branchIndex) {
+        validateBranch(branch);
+        String pathAlias = "p" + branchIndex;
 
         statement.append("MATCH ").append(pathAlias).append(" = ");
-        appendPathPattern(statement, params, path.nodes(), paramPrefix);
-        statement.append("\nRETURN ");
-        if (includeBranchName) {
-            statement.append("'").append(path.expression()).append("' AS branch,\n       ");
+        appendBranchPattern(statement, branch);
+
+        List<String> predicates = new ArrayList<String>();
+        appendNodePredicates(predicates, params, branch.nodes(), branchIndex);
+        appendEdgePredicates(predicates, params, branch.edges(), branchIndex);
+        if (!predicates.isEmpty()) {
+            statement.append("\nWHERE ").append(String.join("\n  AND ", predicates));
         }
-        statement.append(pathAlias).append(" AS path,\n")
-                .append("       [node IN nodes(").append(pathAlias).append(") | node.id] AS nodeIds,\n")
+
+        statement.append("\nRETURN '").append(branch.name()).append("' AS branch,\n")
+                .append("       ").append(pathAlias).append(" AS path,\n")
+                .append("       [node IN nodes(").append(pathAlias).append(") | properties(node)] AS nodeSummaries,\n")
                 .append("       [rel IN relationships(").append(pathAlias).append(") | properties(rel)] AS edgeSummaries");
-        return new CypherQuery(statement.toString(), params);
     }
 
-    // A-B-C 会被拼成 (n0)-[:REL]->(n1)-[:REL]->(n2)，节点 id 通过参数绑定传入。
-    private void appendPathPattern(StringBuilder statement, Map<String, Object> params,
-                                   List<String> nodes, String paramPrefix) {
-        for (int i = 0; i < nodes.size(); i++) {
-            String paramName = paramPrefix + "Node" + i;
-            params.put(paramName, nodes.get(i));
-            statement.append("(n").append(i).append(":").append(nodeLabel)
-                    .append(" {id: $").append(paramName).append("})");
-            if (i < nodes.size() - 1) {
-                statement.append("-[:").append(relationType).append("]->");
+    // 例如 (a:Node)-[ab:REL]->(b:Node)-[bc:REL]->(c:Node)。
+    private void appendBranchPattern(StringBuilder statement, Branch branch) {
+        for (int i = 0; i < branch.nodes().size(); i++) {
+            NodeRef node = branch.nodes().get(i);
+            statement.append("(").append(node.alias()).append(":").append(nodeLabel).append(")");
+            if (i < branch.edges().size()) {
+                EdgeRef edge = branch.edges().get(i);
+                statement.append("-[").append(edge.alias()).append(":").append(relationType).append("]->");
             }
         }
     }
 
-    // 解析分支路径，兼容中文逗号和空格。
-    private List<PathSpec> parseBranches(String expression) {
-        String normalized = normalize(expression);
-        if (normalized.isEmpty()) {
-            throw new IllegalArgumentException("query expression must not be empty");
-        }
-
-        List<PathSpec> branches = new ArrayList<PathSpec>();
-        for (String segment : normalized.split(",")) {
-            if (!segment.isEmpty()) {
-                branches.add(parsePath(segment));
+    private void appendNodePredicates(List<String> predicates, Map<String, Object> params,
+                                      List<NodeRef> nodes, int branchIndex) {
+        for (int nodeIndex = 0; nodeIndex < nodes.size(); nodeIndex++) {
+            NodeRef node = nodes.get(nodeIndex);
+            for (int conditionIndex = 0; conditionIndex < node.conditions().size(); conditionIndex++) {
+                Condition condition = node.conditions().get(conditionIndex);
+                appendCondition(predicates, params, node.alias(), condition,
+                        "branch" + branchIndex + "_node" + nodeIndex + "_cond" + conditionIndex);
             }
         }
-        if (branches.isEmpty()) {
-            throw new IllegalArgumentException("query expression must not be empty");
-        }
-        return branches;
     }
 
-    // 单路径查询不允许带逗号，否则说明调用方传进来的是分支查询格式。
-    private PathSpec parseDirectPath(String expression) {
-        String normalized = normalize(expression);
-        if (normalized.contains(",")) {
-            throw new IllegalArgumentException("direct path query does not support branches: " + expression);
+    private void appendEdgePredicates(List<String> predicates, Map<String, Object> params,
+                                      List<EdgeRef> edges, int branchIndex) {
+        for (int edgeIndex = 0; edgeIndex < edges.size(); edgeIndex++) {
+            EdgeRef edge = edges.get(edgeIndex);
+            for (int conditionIndex = 0; conditionIndex < edge.conditions().size(); conditionIndex++) {
+                Condition condition = edge.conditions().get(conditionIndex);
+                appendCondition(predicates, params, edge.alias(), condition,
+                        "branch" + branchIndex + "_edge" + edgeIndex + "_cond" + conditionIndex);
+            }
         }
-        return parsePath(normalized);
     }
 
-    // 把 A-B-C 解析成节点列表 ["A", "B", "C"]。
-    private PathSpec parsePath(String expression) {
-        List<String> rawNodes = Arrays.asList(normalize(expression).split("-"));
-        if (rawNodes.size() < 2) {
-            throw new IllegalArgumentException("path requires at least two nodes: " + expression);
-        }
+    private void appendCondition(List<String> predicates, Map<String, Object> params,
+                                 String targetAlias, Condition condition, String paramPrefix) {
+        String property = validateIdentifier(condition.property(), "property");
+        String paramName = paramPrefix + "_value";
+        params.put(paramName, condition.value());
 
-        List<String> nodes = new ArrayList<String>();
-        for (String rawNode : rawNodes) {
-            nodes.add(requireText(rawNode, "nodeId"));
-        }
-        return new PathSpec(String.join("-", nodes), nodes);
+        predicates.add(targetAlias + "." + property + " " + condition.operator().cypherOperator() + " $" + paramName);
     }
 
-    // 统一做输入清洗，减少上层对中文标点和空白字符的处理负担。
-    private String normalize(String expression) {
-        if (expression == null) {
-            return "";
+    private void validateBranch(Branch branch) {
+        requireNonNull(branch, "branch");
+        requireText(branch.name(), "branch.name");
+        if (branch.nodes().size() < 2) {
+            throw new IllegalArgumentException("branch.nodes must contain at least two nodes");
         }
-        return expression.replace("，", ",").replace("；", ",").replaceAll("\\s+", "");
+        if (branch.edges().size() != branch.nodes().size() - 1) {
+            throw new IllegalArgumentException("branch.edges size must equal branch.nodes size - 1");
+        }
+
+        for (NodeRef node : branch.nodes()) {
+            validateAlias(node.alias(), "node.alias");
+            validateConditions(node.conditions());
+        }
+        for (EdgeRef edge : branch.edges()) {
+            validateAlias(edge.alias(), "edge.alias");
+            validateConditions(edge.conditions());
+        }
+    }
+
+    private void validateConditions(List<Condition> conditions) {
+        requireNonNull(conditions, "conditions");
+        for (Condition condition : conditions) {
+            requireNonNull(condition, "condition");
+            validateIdentifier(condition.property(), "condition.property");
+            requireNonNull(condition.operator(), "condition.operator");
+            requireNonNull(condition.value(), "condition.value");
+        }
+    }
+
+    private void validateAlias(String alias, String fieldName) {
+        validateIdentifier(alias, fieldName);
+    }
+
+    private <T> T requireNonNull(T value, String fieldName) {
+        if (value == null) {
+            throw new IllegalArgumentException(fieldName + " must not be null");
+        }
+        return value;
     }
 
     private String requireText(String value, String fieldName) {
@@ -164,7 +182,7 @@ public final class GraphQueryService {
         return value.trim();
     }
 
-    // label/type 会直接进入 Cypher 结构，必须限制成合法标识符，不能信任外部输入。
+    // label/type/alias/property 会直接进入 Cypher 结构，必须限制成合法标识符。
     private String validateIdentifier(String value, String fieldName) {
         String text = requireText(value, fieldName);
         if (!text.matches("[A-Za-z_][A-Za-z0-9_]*")) {
@@ -173,22 +191,138 @@ public final class GraphQueryService {
         return text;
     }
 
-    private static final class PathSpec {
-        private final String expression;
-        private final List<String> nodes;
+    public enum Operator {
+        EQ("="),
+        CONTAINS("CONTAINS");
 
-        // expression 是标准化后的原始路径，nodes 是拆分后的节点序列。
-        private PathSpec(String expression, List<String> nodes) {
-            this.expression = expression;
-            this.nodes = Collections.unmodifiableList(new ArrayList<String>(nodes));
+        private final String cypherOperator;
+
+        Operator(String cypherOperator) {
+            this.cypherOperator = cypherOperator;
         }
 
-        private String expression() {
-            return expression;
+        public String cypherOperator() {
+            return cypherOperator;
+        }
+    }
+
+    public static final class Condition {
+        private final String property;
+        private final Operator operator;
+        private final Object value;
+
+        private Condition(String property, Operator operator, Object value) {
+            this.property = property;
+            this.operator = operator;
+            this.value = value;
         }
 
-        private List<String> nodes() {
+        public static Condition eq(String property, Object value) {
+            return new Condition(property, Operator.EQ, value);
+        }
+
+        public static Condition contains(String property, String value) {
+            return new Condition(property, Operator.CONTAINS, value);
+        }
+
+        public String property() {
+            return property;
+        }
+
+        public Operator operator() {
+            return operator;
+        }
+
+        public Object value() {
+            return value;
+        }
+    }
+
+    public static final class NodeRef {
+        private final String alias;
+        private final List<Condition> conditions;
+
+        private NodeRef(String alias, List<Condition> conditions) {
+            this.alias = alias;
+            this.conditions = Collections.unmodifiableList(new ArrayList<Condition>(conditions));
+        }
+
+        public static NodeRef of(String alias, Condition... conditions) {
+            return new NodeRef(alias, asList(conditions));
+        }
+
+        public String alias() {
+            return alias;
+        }
+
+        public List<Condition> conditions() {
+            return conditions;
+        }
+    }
+
+    public static final class EdgeRef {
+        private final String alias;
+        private final List<Condition> conditions;
+
+        private EdgeRef(String alias, List<Condition> conditions) {
+            this.alias = alias;
+            this.conditions = Collections.unmodifiableList(new ArrayList<Condition>(conditions));
+        }
+
+        public static EdgeRef of(String alias, Condition... conditions) {
+            return new EdgeRef(alias, asList(conditions));
+        }
+
+        public String alias() {
+            return alias;
+        }
+
+        public List<Condition> conditions() {
+            return conditions;
+        }
+    }
+
+    public static final class Branch {
+        private final String name;
+        private final List<NodeRef> nodes;
+        private final List<EdgeRef> edges;
+
+        private Branch(String name, List<NodeRef> nodes, List<EdgeRef> edges) {
+            this.name = name;
+            this.nodes = Collections.unmodifiableList(new ArrayList<NodeRef>(nodes));
+            this.edges = Collections.unmodifiableList(new ArrayList<EdgeRef>(edges));
+        }
+
+        public static Branch of(String name, List<NodeRef> nodes, List<EdgeRef> edges) {
+            return new Branch(name, nodes, edges);
+        }
+
+        public String name() {
+            return name;
+        }
+
+        public List<NodeRef> nodes() {
             return nodes;
+        }
+
+        public List<EdgeRef> edges() {
+            return edges;
+        }
+    }
+
+    public static final class PathQueryRequest {
+        private final List<Branch> branches;
+
+        private PathQueryRequest(List<Branch> branches) {
+            this.branches = Collections.unmodifiableList(new ArrayList<Branch>(branches));
+        }
+
+        public static PathQueryRequest of(List<Branch> branches) {
+            return new PathQueryRequest(branches);
+        }
+
+        public List<Branch> branches() {
+            return branches;
         }
     }
 
@@ -209,5 +343,14 @@ public final class GraphQueryService {
         public Map<String, Object> params() {
             return params;
         }
+    }
+
+    private static <T> List<T> asList(T[] items) {
+        List<T> list = new ArrayList<T>();
+        if (items == null) {
+            return list;
+        }
+        Collections.addAll(list, items);
+        return list;
     }
 }
