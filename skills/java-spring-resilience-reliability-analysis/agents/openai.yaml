@@ -1,0 +1,4 @@
+interface:
+  display_name: "Java Spring Reliability Analyzer"
+  short_description: "Analyze Spring microservice reliability risks"
+  default_prompt: "Analyze this Java Spring microservice for resilience and high-reliability risks, then provide prioritized findings and concrete fixes."

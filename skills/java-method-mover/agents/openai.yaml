@@ -1,0 +1,4 @@
+interface:
+  display_name: "Java Method Mover"
+  short_description: "Move Java methods with dependency cleanup"
+  default_prompt: "Use $java-method-mover to move this Java method into the correct class, bring its required helpers/fields/constants/imports, and clean dead code from the source class."

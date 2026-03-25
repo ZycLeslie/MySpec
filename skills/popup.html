@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>API 数据抓取</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main>
+      <h1>API 数据抓取</h1>
+
+      <label>
+        接口 URL 模板（使用 <code>{page}</code> 作为页码占位）
+        <input id="urlTemplate" placeholder="https://example.com/api/list?page={page}&size=20" />
+      </label>
+
+      <div class="row">
+        <label>
+          方法
+          <select id="method">
+            <option value="GET">GET</option>
+            <option value="POST">POST</option>
+          </select>
+        </label>
+
+        <label>
+          当前页
+          <input id="currentPage" type="number" min="1" value="1" />
+        </label>
+
+        <label>
+          最大页数
+          <input id="maxPages" type="number" min="1" value="200" />
+        </label>
+      </div>
+
+      <label>
+        请求头（可选，支持 JSON 或每行 <code>k:v</code>）
+        <textarea id="headers" rows="3" placeholder="Content-Type: application/json&#10;Authorization: Bearer xxx"></textarea>
+      </label>
+
+      <label>
+        请求体模板 JSON（可选，支持 <code>{page}</code>）
+        <textarea id="body" rows="3" placeholder='{"page": "{page}", "size": 20}'></textarea>
+      </label>
+
+      <label>
+        数据路径（必填，例如 <code>data.list</code>）
+        <input id="dataPath" placeholder="data.list" />
+      </label>
+
+      <label>
+        总页数字段路径（可选，例如 <code>data.totalPages</code>）
+        <input id="totalPagesPath" placeholder="data.totalPages" />
+      </label>
+
+      <div class="actions">
+        <button id="fetchCurrent">抓取当前页</button>
+        <button id="fetchAll">自动抓取全部页</button>
+        <button id="stop">停止任务</button>
+        <button id="export">导出 JSON</button>
+      </div>
+
+      <section id="status"></section>
+    </main>
+    <script src="popup.js" type="module"></script>
+  </body>
+</html>

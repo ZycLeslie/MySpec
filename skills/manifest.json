@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Paged API JSON Collector",
+  "version": "1.0.0",
+  "description": "抓取当前页/全部页接口数据并导出 JSON",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "downloads",
+    "alarms",
+    "tabs"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "API 数据抓取"
+  }
+}
