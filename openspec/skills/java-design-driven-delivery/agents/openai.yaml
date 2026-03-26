@@ -1,0 +1,4 @@
+interface:
+  display_name: "Java Design Delivery"
+  short_description: "按设计文档执行 Java 21 / Spring MVC 开发编排"
+  default_prompt: "Use $java-design-driven-delivery to read the design/spec docs, split work by feature or Spring MVC layer, maintain a local progress checklist, and only finish after standards checks pass with 100 percent progress."
