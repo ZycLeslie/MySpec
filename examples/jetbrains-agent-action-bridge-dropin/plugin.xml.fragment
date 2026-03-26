@@ -1,0 +1,10 @@
+<!-- Optional: merge this into your existing META-INF/plugin.xml -->
+<actions>
+    <action
+            id="dev.openspec.ideaagentdropin.ShowAgentToolCatalogAction"
+            class="dev.openspec.ideaagentdropin.ShowAgentToolCatalogAction"
+            text="Show Agent Tool Catalog"
+            description="Show the available tool contract for the agent action bridge">
+        <add-to-group group-id="ToolsMenu" anchor="last"/>
+    </action>
+</actions>
