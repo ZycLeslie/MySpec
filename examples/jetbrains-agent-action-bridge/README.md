@@ -58,6 +58,29 @@ Examples:
 3. In the sandbox IDE, use `Tools -> Show Agent Tool Catalog`.
 4. From your agent bridge, call `AgentToolBridgeService.listTools()` and `invokeTool(...)`.
 
+## Read Timeout Fix
+
+If the first Gradle import or `runIde` hits a read timeout, this example already includes a safer default setup in `gradle.properties`:
+
+- longer Gradle HTTP connection and socket timeouts
+- IntelliJ Platform source download disabled
+- local IntelliJ Platform caches enabled under `.intellijPlatform/`
+
+If it still times out on Windows:
+
+1. Reopen the project and click `Reload All Gradle Projects`.
+2. Make sure Gradle uses a stable network or configured proxy.
+3. Run the project once with dependencies download completed before trying `runIde` again.
+
+If IntelliJ itself is the component timing out while downloading plugins or dependencies, you can also increase IDE-level timeouts in custom properties:
+
+```properties
+idea.connection.timeout=180000
+idea.read.timeout=180000
+```
+
+JetBrains IDE custom properties can be edited from `Help -> Edit Custom Properties`.
+
 ## Integration Point
 
 If your JetBrains plugin already has an agent runtime, wire it to:
