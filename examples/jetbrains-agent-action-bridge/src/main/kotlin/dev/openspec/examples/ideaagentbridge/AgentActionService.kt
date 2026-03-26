@@ -15,42 +15,70 @@ class AgentActionService(private val project: Project) {
     fun allowedActions(): Set<String> = AgentActionIds.ALLOWED_IDEA_ACTIONS
 
     fun invokeIdeaAction(actionId: String): AgentToolCallResult {
-        if (actionId !in AgentActionIds.ALLOWED_IDEA_ACTIONS) {
+        return invokeEditorActions(listOf(actionId))
+    }
+
+    fun formatCode(): AgentToolCallResult {
+        return invokeEditorActions(listOf(AgentActionIds.REFORMAT_CODE_ACTION))
+    }
+
+    fun formatImports(): AgentToolCallResult {
+        return invokeEditorActions(listOf(AgentActionIds.OPTIMIZE_IMPORTS_ACTION))
+    }
+
+    fun formatCodeAndImports(): AgentToolCallResult {
+        return invokeEditorActions(
+            listOf(
+                AgentActionIds.OPTIMIZE_IMPORTS_ACTION,
+                AgentActionIds.REFORMAT_CODE_ACTION,
+            ),
+        )
+    }
+
+    private fun invokeEditorActions(actionIds: List<String>): AgentToolCallResult {
+        val disallowedAction = actionIds.firstOrNull { it !in AgentActionIds.ALLOWED_IDEA_ACTIONS }
+        if (disallowedAction != null) {
             return AgentToolCallResult(
                 success = false,
-                message = "action_not_allowed: $actionId",
+                message = "action_not_allowed: $disallowedAction",
                 data = mapOf("allowedActions" to allowedActions().sorted()),
             )
         }
 
         val editor = FileEditorManager.getInstance(project).selectedTextEditor
             ?: return AgentToolCallResult(false, "no_active_editor")
-
-        val action = ActionManager.getInstance().getAction(actionId)
-            ?: return AgentToolCallResult(false, "action_not_found: $actionId")
+        val actionManager = ActionManager.getInstance()
+        val actions = actionIds.map { id ->
+            actionManager.getAction(id) ?: return AgentToolCallResult(false, "action_not_found: $id")
+        }
 
         return try {
             ApplicationManager.getApplication().invokeAndWait {
                 val dataContext = DataManager.getInstance().getDataContext(editor.contentComponent)
-                ActionUtil.invokeAction(
-                    action,
-                    dataContext,
-                    ActionPlaces.UNKNOWN,
-                    null,
-                    null,
-                )
+                actions.forEach { action ->
+                    ActionUtil.invokeAction(
+                        action,
+                        dataContext,
+                        ActionPlaces.UNKNOWN,
+                        null,
+                        null,
+                    )
+                }
             }
 
             AgentToolCallResult(
                 success = true,
                 message = "ok",
-                data = mapOf("actionId" to actionId),
+                data = mapOf(
+                    "actionIds" to actionIds,
+                    "actionCount" to actionIds.size,
+                ),
             )
         } catch (t: Throwable) {
             AgentToolCallResult(
                 success = false,
                 message = "invoke_failed: ${t.message ?: t::class.java.simpleName}",
-                data = mapOf("actionId" to actionId),
+                data = mapOf("actionIds" to actionIds),
             )
         }
     }

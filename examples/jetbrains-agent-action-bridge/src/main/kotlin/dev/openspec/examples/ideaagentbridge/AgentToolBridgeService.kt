@@ -25,23 +25,42 @@ class AgentToolBridgeService(private val project: Project) {
                     "additionalProperties" to false,
                 ),
             ),
+            AgentToolDefinition(
+                name = AgentActionIds.FORMAT_CODE,
+                description = "Format the current file with IntelliJ reformat code.",
+                inputSchema = emptyObjectSchema(),
+            ),
+            AgentToolDefinition(
+                name = AgentActionIds.FORMAT_IMPORTS,
+                description = "Optimize imports in the current file.",
+                inputSchema = emptyObjectSchema(),
+            ),
+            AgentToolDefinition(
+                name = AgentActionIds.FORMAT_CODE_AND_IMPORTS,
+                description = "Optimize imports first, then reformat the current file.",
+                inputSchema = emptyObjectSchema(),
+            ),
         )
     }
 
     fun invokeTool(name: String, arguments: Map<String, Any?>): AgentToolCallResult {
         return when (name) {
             AgentActionIds.INVOKE_IDEA_ACTION -> invokeIdeaAction(arguments)
+            AgentActionIds.FORMAT_CODE -> project.service<AgentActionService>().formatCode()
+            AgentActionIds.FORMAT_IMPORTS -> project.service<AgentActionService>().formatImports()
+            AgentActionIds.FORMAT_CODE_AND_IMPORTS -> project.service<AgentActionService>().formatCodeAndImports()
             else -> AgentToolCallResult(false, "tool_not_found: $name")
         }
     }
 
     fun renderCatalog(): String {
-        val tool = listTools().single()
+        val tools = listTools()
         val allowedValues = AgentActionIds.ALLOWED_IDEA_ACTIONS.sorted().joinToString(separator = "\n- ", prefix = "- ")
         return buildString {
-            appendLine("Tool: ${tool.name}")
-            appendLine()
-            appendLine(tool.description)
+            appendLine("Available tools:")
+            tools.forEach { tool ->
+                appendLine("- ${tool.name}: ${tool.description}")
+            }
             appendLine()
             appendLine("Allowed actionId values:")
             appendLine(allowedValues)
@@ -53,5 +72,13 @@ class AgentToolBridgeService(private val project: Project) {
             ?: return AgentToolCallResult(false, "missing_argument: actionId")
 
         return project.service<AgentActionService>().invokeIdeaAction(actionId)
+    }
+
+    private fun emptyObjectSchema(): Map<String, Any?> {
+        return mapOf(
+            "type" to "object",
+            "properties" to emptyMap<String, Any?>(),
+            "additionalProperties" to false,
+        )
     }
 }

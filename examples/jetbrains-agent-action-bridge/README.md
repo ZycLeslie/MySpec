@@ -10,13 +10,16 @@ This example is a minimal IntelliJ Platform plugin project that exposes a tool-s
 
 ## Agent-Facing Tool
 
-Tool name:
+Tools:
 
 ```text
 invoke_idea_action
+format_code
+format_imports
+format_code_and_imports
 ```
 
-Accepted arguments:
+Accepted arguments for `invoke_idea_action`:
 
 ```json
 {
@@ -31,6 +34,22 @@ Allowed action IDs by default:
 - `FindUsages`
 - `GotoDeclaration`
 - `OptimizeImports`
+
+Examples:
+
+```json
+{"name":"format_code","arguments":{}}
+```
+
+```json
+{"name":"format_imports","arguments":{}}
+```
+
+```json
+{"name":"format_code_and_imports","arguments":{}}
+```
+
+`format_code_and_imports` runs `OptimizeImports` first and then `ReformatCode`.
 
 ## How To Try It
 
