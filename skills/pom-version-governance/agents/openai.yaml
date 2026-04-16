@@ -1,0 +1,4 @@
+interface:
+  display_name: "POM Version Governance"
+  short_description: "Scan duplicate/conflicting Maven versions"
+  default_prompt: "Use $pom-version-governance to scan this multi-module Maven project and report duplicate/conflicting dependency, plugin, and property version definitions with a centralization plan."
